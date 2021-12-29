@@ -1,5 +1,5 @@
 import argparse
-import sniffer
+from sniffer import Config, sniff
 
 def parse_args():
     parser = argparse.ArgumentParser(description="ARP packets sniffer.")
@@ -10,8 +10,8 @@ def parse_args():
 
 def main():
     args = parse_args()
-    sniffer.Config.interface = args.interface
-    sniffer.sniff()
+    Config.interface = args.interface
+    sniff()
 
 if __name__ == "__main__":
     main()

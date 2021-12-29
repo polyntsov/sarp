@@ -1,15 +1,9 @@
 import socket
 import struct
 import binascii
-import sys
 
 class Config:
     interface = ""
-    file = sys.stdout
-
-    @staticmethod
-    def print(name, value):
-        print("{0:<15} {1}".format(name + ':', value), file = Config.file)
 
 class EtherType:
     ETH_P_ALL = 0x0003 # Every packet
@@ -24,9 +18,9 @@ class EtherHeader:
         self.ethertype = ethertype
 
     def print(self):
-        Config.print("Dest MAC",
+        print_format("Dest MAC",
                      binascii.hexlify(self.dest_mac).decode())
-        Config.print("Source MAC",
+        print_format("Source MAC",
                      binascii.hexlify(self.src_mac).decode())
 
     @staticmethod
@@ -49,20 +43,22 @@ class ARPHeader:
         self.tha = tha
         self.tpa = tpa
 
-
     def print(self):
         opcode = "REQUEST" if int.from_bytes(self.oper, "big") == 1 else "REPLY"
-        Config.print("Opcode", opcode)
-        Config.print("Source MAC", binascii.hexlify(self.sha).decode())
-        Config.print("Source IP", socket.inet_ntoa(self.spa))
-        Config.print("Dest MAC", binascii.hexlify(self.tha).decode())
-        Config.print("Dest IP", socket.inet_ntoa(self.tpa))
+        print_format("Opcode", opcode)
+        print_format("Source MAC", binascii.hexlify(self.sha).decode())
+        print_format("Source IP", socket.inet_ntoa(self.spa))
+        print_format("Dest MAC", binascii.hexlify(self.tha).decode())
+        print_format("Dest IP", socket.inet_ntoa(self.tpa))
 
     @staticmethod
     def parse(buf):
         arp_detailed = struct.unpack("!2s2s1s1s2s6s4s6s4s", buf)
         header = ARPHeader(*arp_detailed)
         return header
+
+def print_format(name, value):
+    print("{0:<15} {1}".format(name + ':', value))
 
 def create_socket():
     s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW,
@@ -80,7 +76,7 @@ def sniff():
     while True:
         packet = s.recv(EtherHeader.SIZE + ARPHeader.SIZE)
 
-        ether_header = EtherHeader.parse(packet[0:EtherHeader.SIZE])
+        ether_header = EtherHeader.parse(packet[:EtherHeader.SIZE])
 
         # convert from network byte order (always big)
         if int.from_bytes(ether_header.ethertype, "big") != EtherType.ETH_P_ARP:
