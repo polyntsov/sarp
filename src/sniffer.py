@@ -1,6 +1,8 @@
 import socket
 import struct
 import binascii
+import oui_parser
+from enum import Enum
 
 class Config:
     interface = ""
@@ -13,15 +15,14 @@ class EtherHeader:
     SIZE = 14 # should not be changed
 
     def __init__(self, dest_mac, src_mac, ethertype):
-        self.dest_mac = dest_mac
-        self.src_mac = src_mac
-        self.ethertype = ethertype
+        self.dest_mac = binascii.hexlify(dest_mac).decode()
+        self.src_mac = binascii.hexlify(src_mac).decode()
+        # convert from network byte order (always big)
+        self.ethertype = int.from_bytes(ethertype, "big")
 
     def print(self):
-        print_format("Dest MAC",
-                     binascii.hexlify(self.dest_mac).decode())
-        print_format("Source MAC",
-                     binascii.hexlify(self.src_mac).decode())
+        print_format("Dest MAC", self.dest_mac)
+        print_format("Source MAC", self.src_mac)
 
     @staticmethod
     def parse(buf):
@@ -29,26 +30,35 @@ class EtherHeader:
         header = EtherHeader(*ethernet_detailed)
         return header
 
+    @staticmethod
+    def add_colon(mac):
+        return ":".join(mac[i:i+2] for i in range(0, len(mac), 2))
+
 class ARPHeader:
-    SIZE = 28 # should not be changed
+    SIZE = 28   # should not be changed
+
+    # operation type
+    REQUEST = 1 # should not be changed
+    REPLY = 2   # should not be changed
 
     def __init__(self, htype, ptype, hlen, plen, oper, sha, spa, tha, tpa):
         self.htype = htype
         self.ptype = ptype
         self.hlen = hlen
         self.plen = plen
-        self.oper = oper
-        self.sha = sha
+        is_request = int.from_bytes(oper, "big") == ARPHeader.REQUEST
+        self.oper = ARPHeader.REQUEST if  is_request else ARPHeader.REPLY
+        self.sha = binascii.hexlify(sha).decode()
         self.spa = spa
-        self.tha = tha
+        self.tha = binascii.hexlify(tha).decode()
         self.tpa = tpa
 
     def print(self):
-        opcode = "REQUEST" if int.from_bytes(self.oper, "big") == 1 else "REPLY"
+        opcode = "REQUEST" if self.oper == ARPHeader.REQUEST else "REPLY"
         print_format("Opcode", opcode)
-        print_format("Source MAC", binascii.hexlify(self.sha).decode())
+        print_format("Source MAC", EtherHeader.add_colon(self.sha))
         print_format("Source IP", socket.inet_ntoa(self.spa))
-        print_format("Dest MAC", binascii.hexlify(self.tha).decode())
+        print_format("Dest MAC", EtherHeader.add_colon(self.tha))
         print_format("Dest IP", socket.inet_ntoa(self.tpa))
 
     @staticmethod
@@ -58,7 +68,7 @@ class ARPHeader:
         return header
 
 def print_format(name, value):
-    print("{0:<15} {1}".format(name + ':', value))
+    print("{0:<20} {1}".format(name + ':', value))
 
 def create_socket():
     s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW,
@@ -78,15 +88,18 @@ def sniff():
 
         ether_header = EtherHeader.parse(packet[:EtherHeader.SIZE])
 
-        # convert from network byte order (always big)
-        if int.from_bytes(ether_header.ethertype, "big") != EtherType.ETH_P_ARP:
+        if ether_header.ethertype != EtherType.ETH_P_ARP:
             continue
 
         arp_header = ARPHeader.parse(packet[EtherHeader.SIZE:
                                             EtherHeader.SIZE + ARPHeader.SIZE])
 
-        arp_frame = '*' * 10 + " ARP FRAME " + '*' * 10
+        arp_frame = '*' * 18 + " ARP FRAME " + '*' * 18
         print(arp_frame)
         arp_header.print()
+        m = oui_parser.parse_oui("oui.txt")
+        print_format("Source MAC Vendor", f"{m[arp_header.sha[:6]]}")
+        if arp_header.oper == ARPHeader.REPLY:
+            print_format("Dest MAC Vendor", f"{m[arp_header.tha[:6]]}")
         print('*' * len(arp_frame))
 
