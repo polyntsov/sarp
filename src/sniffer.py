@@ -2,7 +2,6 @@ import socket
 import struct
 import binascii
 import oui_parser
-from enum import Enum
 
 class Config:
     interface = ""
@@ -49,17 +48,17 @@ class ARPHeader:
         is_request = int.from_bytes(oper, "big") == ARPHeader.REQUEST
         self.oper = ARPHeader.REQUEST if  is_request else ARPHeader.REPLY
         self.sha = binascii.hexlify(sha).decode()
-        self.spa = spa
+        self.spa = socket.inet_ntoa(spa)
         self.tha = binascii.hexlify(tha).decode()
-        self.tpa = tpa
+        self.tpa = socket.inet_ntoa(tpa)
 
     def print(self):
         opcode = "REQUEST" if self.oper == ARPHeader.REQUEST else "REPLY"
         print_format("Opcode", opcode)
         print_format("Source MAC", EtherHeader.add_colon(self.sha))
-        print_format("Source IP", socket.inet_ntoa(self.spa))
+        print_format("Source IP", self.spa)
         print_format("Dest MAC", EtherHeader.add_colon(self.tha))
-        print_format("Dest IP", socket.inet_ntoa(self.tpa))
+        print_format("Dest IP", self.tpa)
 
     @staticmethod
     def parse(buf):
@@ -91,11 +90,17 @@ def sniff():
         if ether_header.ethertype != EtherType.ETH_P_ARP:
             continue
 
-        arp_header = ARPHeader.parse(packet[EtherHeader.SIZE:
-                                            EtherHeader.SIZE + ARPHeader.SIZE])
+        try:
+            arp_header_row = packet[EtherHeader.SIZE:
+                                    EtherHeader.SIZE + ARPHeader.SIZE]
+            arp_header = ARPHeader.parse(arp_header_row)
+        except OSError:
+            # Occurs only when socket.inet_ntoa fails inside ARPHeader.Parse
+            continue # just ignore invalid packages
 
         arp_frame = '*' * 18 + " ARP FRAME " + '*' * 18
         print(arp_frame)
+
         arp_header.print()
         m = oui_parser.parse_oui("oui.txt")
         print_format("Source MAC Vendor", f"{m[arp_header.sha[:6]]}")
