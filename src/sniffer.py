@@ -103,8 +103,11 @@ def sniff():
 
         arp_header.print()
         m = oui_parser.parse_oui("oui.txt")
-        print_format("Source MAC Vendor", f"{m[arp_header.sha[:6]]}")
+        unknown = "Unknown"
+        print_format("Source MAC Vendor",
+                     f"{m.get(arp_header.sha[:6], unknown)}")
         if arp_header.oper == ARPHeader.REPLY:
-            print_format("Dest MAC Vendor", f"{m[arp_header.tha[:6]]}")
+            print_format("Dest MAC Vendor",
+                         f"{m.get(arp_header.tha[:6], unknown)}")
         print('*' * len(arp_frame))
 
